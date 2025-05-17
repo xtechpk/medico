@@ -1,40 +1,26 @@
 const express = require('express');
 const { authenticate, authorize } = require('../middlewares/authmiddleware');
-const {
-  createSuperAdmin,
-  getAllSuperAdmins,
-  updateSuperAdminById,
-
-  createAdmin,
-  getAllAdmins,
-  updateAdminById,
-
-  createEmployee,
-  getAllEmployees,
-  updateEmployeeById,
-
-  login
-} = require('../controllers/userController');
+const userController = require('../controllers/userController');
 
 const router = express.Router();
 
 // Login Route
-router.post('/login', login);
+router.post('/login', userController.login);
 
 // SuperAdmin APIs
-router.post('/superadmin', createSuperAdmin);
-router.get('/superadmins', authenticate,  getAllSuperAdmins);
-
-router.patch('/superadmins/:id', authenticate, updateSuperAdminById);
+router.post('/superadmin', userController.createSuperAdmin);
+router.get('/superadmins', authenticate, userController.getAllSuperAdmins);
+router.patch('/superadmins/:id', authenticate, userController.updateSuperAdminById);
 
 // Admin APIs
-router.post('/admin', authenticate, authorize(['SUPERADMIN']), createAdmin);
-router.get('/admins', authenticate,  getAllAdmins);
-router.patch('/admins/:id',authenticate, updateAdminById);
+router.post('/admin', authenticate, authorize(['SUPERADMIN']), userController.createAdmin);
+router.get('/admins', authenticate, userController.getAllAdmins);
+router.patch('/admins/:id', authenticate, userController.updateAdminById);
 
 // Employee APIs
-router.post('/employee', authenticate, authorize(['ADMIN']), createEmployee);
-router.get('/employees', authenticate, getAllEmployees);
-router.patch('/employees/:id',authenticate, updateEmployeeById);
+router.post('/employee', authenticate, authorize(['ADMIN']), userController.createEmployee);
+router.get('/employees', authenticate, userController.getAllEmployees);
+router.patch('/employees/:id', authenticate, userController.updateEmployeeById);
+
 
 module.exports = router;

@@ -35,6 +35,7 @@ const medicalStoreRoutes = require('./routes/medicalStoreRoutes');
 const companyRoutes = require('./routes/companyRoutes'); // Import company routes
 const medicineRoutes = require('./routes/medicineRoute');
 const analysisRoutes = require('./routes/analysisRoutes');
+const salesRoutes = require('./routes/salesRoutes');
 
 
 // Register Routes
@@ -43,6 +44,8 @@ app.use('/api/stores', medicalStoreRoutes);
 app.use('/api/companies', companyRoutes);
 app.use('/api/medicines', medicineRoutes);
 app.use('/api/analysis', analysisRoutes);
+app.use('/api/sales', salesRoutes);
+
 
 
 // Start the Server

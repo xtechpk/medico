@@ -15,6 +15,9 @@ router.get('/medical-stores/:medicalStoreId/sales-analysis/monthly', analysisCon
 // Get yearly sales analysis
 router.get('/medical-stores/:medicalStoreId/sales-analysis/yearly', analysisController.getYearlySalesAnalysis);
 
+// Get custom sales analysis
+router.get('/medical-stores/:medicalStoreId/sales-analysis/custom', analysisController.getCustomSalesAnalysis);
+
 module.exports = router;
 
 

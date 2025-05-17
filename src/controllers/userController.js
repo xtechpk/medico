@@ -486,6 +486,8 @@ const updateEmployeeById = async (req, res) => {
   }
 };
 
+
+
 module.exports = { login,
 
   createSuperAdmin,
@@ -499,4 +501,5 @@ module.exports = { login,
   createEmployee,
   getAllEmployees,
   updateEmployeeById,
+
 }; 
