@@ -23,20 +23,19 @@ model User {
   children       User[]           @relation("UserEmployeeParent") // Self-referencing relation for hierarchical structure
   medicalStore   MedicalStore?    @relation("UserMedicalStore")   // Relation to MedicalStore
   medicalStoreId Int?             // Foreign key to MedicalStore
-
   orders         Order[]          @relation("UserOrders")         
   auditLogs      AuditLog[]       // Relation to audit logs
   purchaseOrders PurchaseOrder[]  @relation("UserPurchaseOrders") 
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
-  @@index([email])                
-  @@index([employeeId])           
+  @@index([email])
+  @@index([employeeId])
 }
 
 model MedicalStore {
   id                Int                  @id @default(autoincrement())
-  ownerId           Int                  @unique // Marked as unique to ensure a one-to-one relationship
+  ownerId           Int                  @unique
   name              String
   address           String
   licenseNumber     String
@@ -48,105 +47,193 @@ model MedicalStore {
   purchaseOrders    PurchaseOrder[]      
   stockTransactions StockTransaction[]   
   companies         Company[]            
-
+  suppliers         Supplier[]
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
 
-  @@index([ownerId])                      
+  @@index([ownerId])
 }
 
 model Company {
-  id               Int        @id @default(autoincrement())
-  companyCode      String     
+  id               Int         @id @default(autoincrement())
+  companyCode      String
   name             String
   address          String
-  phone            String?    
-  mobile           String?    
-  distributorCode  String
-  isActive         Boolean          @default(true)
-  ntnNo            String?    // Optional NTN number
-  registrationDate DateTime   @default(now())
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
-  medicines        Medicine[] // Relation to medicines
-  medicalStoreId   Int        // Foreign key to MedicalStore
+  phone            String?
+  mobile           String?
+  distributorCode  String?
+  ntnNumber        String?
+  registrationDate DateTime    @default(now())
+  isActive         Boolean     @default(true)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  medicalStoreId   Int
   medicalStore     MedicalStore @relation(fields: [medicalStoreId], references: [id], onDelete: Cascade)
+  suppliers        Supplier[]
+  medicines        Medicine[]   @relation("CompanyMedicines")
 
-  @@unique([companyCode, medicalStoreId]) // Composite unique constraint
-  @@index([companyCode])                  // Index for faster lookups by companyCode
+  @@unique([companyCode, medicalStoreId])
+  @@index([companyCode])
+  @@index([medicalStoreId])
+}
+
+model Supplier {
+  id             Int          @id @default(autoincrement())
+  supplierCode   String?      @unique
+  name           String
+  email          String?
+  phone          String?
+  address        String
+  distributorCode String
+  ntnNumber      String?
+  isActive       Boolean      @default(true)
+  companyId      Int
+  medicalStoreId Int
+  medicalStore   MedicalStore @relation(fields: [medicalStoreId], references: [id], onDelete: Cascade)
+  company        Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  medicines      Medicine[]
+  purchaseOrders PurchaseOrder[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([supplierCode, medicalStoreId])
+  @@index([companyId])
+  @@index([medicalStoreId])
 }
 
 model Medicine {
-  id            Int                      @id @default(autoincrement())
-  name          String
-  formula       String?
-  description   String?
-  minquantity   Int
-  companyId     Int
-  createdAt     DateTime                 @default(now())
-  updatedAt     DateTime                 @updatedAt
-  isActive         Boolean          @default(true)
-  company       Company                  @relation(fields: [companyId], references: [id])
-  instances     MedicineInstance[]
-  locations     MedicineLocation[]
-  expiries      MedicineExpiry[]
-  stores        MedicalStoreMedicine[]
-  batches       Batch[]
-  soldItems     SoldItems[]
-  returnedItems ReturnedItems[]
+  id              Int                  @id @default(autoincrement())
+  name            String
+  formula         String?
+  description     String?
+  minquantity     Int
+  companyId       Int
+  supplierId      Int
+  isActive        Boolean              @default(true)
+  company         Company              @relation("CompanyMedicines", fields: [companyId], references: [id], onDelete: Cascade)
+  supplier        Supplier             @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  variations      Variation[]
+  locations       MedicineLocation[]
+  medicalStoreMedicines MedicalStoreMedicine[]
+  expiryRecords   MedicineExpiry[]
+  soldItems       SoldItems[]
+  returnedItems   ReturnedItems[]
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
 
-  @@index([name])
-  @@index([formula])
+  @@index([companyId])
+  @@index([supplierId])
 }
 
-model MedicalStoreMedicine {
-  id            Int           @id @default(autoincrement())
-  medicalStoreId Int
+model Variation {
+  id            Int               @id @default(autoincrement())
   medicineId    Int
-  quantity      Int
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  medicalStore  MedicalStore  @relation(fields: [medicalStoreId], references: [id])
-  medicine      Medicine      @relation(fields: [medicineId], references: [id])
+  potency       String
+  packaging     String
+  unitType      String
+  unitsPerPack  Int
+  medicine      Medicine          @relation(fields: [medicineId], references: [id], onDelete: Cascade)
+  batches       Batch[]
+  instances     MedicineInstance[]
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
 
-  @@index([medicalStoreId, medicineId])
+  @@index([medicineId])
+}
+
+model Batch {
+  id            Int               @id @default(autoincrement())
+  batchNo       String
+  mfgDate       DateTime
+  expiryDate    DateTime
+  quantity      Int
+  price         Float
+  variationId   Int
+  purchaseOrderId Int?
+  variation     Variation         @relation(fields: [variationId], references: [id], onDelete: Cascade)
+  purchaseOrder PurchaseOrder?    @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
+  instances     MedicineInstance[]
+  soldItems     SoldItems[]
+  returnedItems ReturnedItems[]
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([variationId])
+  @@index([purchaseOrderId])
 }
 
 model MedicineInstance {
-  id            Int               @id @default(autoincrement())
-  medicineId    Int
-  batchId       Int?
-  expiryDate    DateTime
-  quantity      Int
-  purchasePrice Float
-  sellingPrice  Float
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
-  medicine      Medicine          @relation(fields: [medicineId], references: [id])
-  batch         Batch?            @relation(fields: [batchId], references: [id])
+  id              Int               @id @default(autoincrement())
+  variationId     Int
+  batchId         Int
+  expiryDate      DateTime
+  quantity        Int
+  purchasePrice   Float
+  sellingPrice    Float
+  variation       Variation         @relation(fields: [variationId], references: [id], onDelete: Cascade)
+  batch           Batch             @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  locations       MedicineLocation[]
+  subunits        SubUnit[]
   stockTransactions StockTransaction[]
-  locations     MedicineLocation[] 
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
 
-  @@index([medicineId])
+  @@index([variationId])
   @@index([batchId])
 }
 
-model MedicineLocation {
-  id              Int               @id @default(autoincrement())
-  medicalStoreId  Int
-  medicineId      Int
-  medicineInstanceId Int
-  location        String            
-  rank            String?           
-  quantity        Int
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  medicalStore    MedicalStore      @relation(fields: [medicalStoreId], references: [id])
-  medicine        Medicine          @relation(fields: [medicineId], references: [id])
-  medicineInstance MedicineInstance @relation(fields: [medicineInstanceId], references: [id])
+model SubUnit {
+  id                  Int              @id @default(autoincrement())
+  unitId              Int
+  name                String
+  description         String?
+  unitType            String
+  subUnitCount        Int
+  subUnitPrice        Float
+  isSold              Boolean          @default(false)
+  isReturnedByCustomer Boolean         @default(false)
+  isReturnedToSupplier Boolean         @default(false)
+  instance            MedicineInstance @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  soldItems           SoldItems[]
+  returnedItems       ReturnedItems[]
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
 
-  @@index([medicalStoreId, medicineId])
+  @@index([unitId])
+}
+
+model MedicineLocation {
+  id                Int              @id @default(autoincrement())
+  medicalStoreId    Int
+  medicineId        Int
+  medicineInstanceId Int
+  location          String
+  rank              String?
+  quantity          Int
+  medicalStore      MedicalStore     @relation(fields: [medicalStoreId], references: [id], onDelete: Cascade)
+  medicine          Medicine         @relation(fields: [medicineId], references: [id], onDelete: Cascade)
+  instance          MedicineInstance @relation(fields: [medicineInstanceId], references: [id], onDelete: Cascade)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@index([medicalStoreId])
+  @@index([medicineId])
   @@index([medicineInstanceId])
+}
+
+model MedicalStoreMedicine {
+  id             Int           @id @default(autoincrement())
+  medicalStoreId Int
+  medicineId     Int
+  quantity       Int
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  medicalStore   MedicalStore  @relation(fields: [medicalStoreId], references: [id], onDelete: Cascade)
+  medicine       Medicine      @relation(fields: [medicineId], references: [id], onDelete: Cascade)
+
+  @@unique([medicalStoreId, medicineId])
+  @@index([medicalStoreId])
+  @@index([medicineId])
 }
 
 model MedicineExpiry {
@@ -156,72 +243,54 @@ model MedicineExpiry {
   isNearExpiry  Boolean   @default(false)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-  medicine      Medicine  @relation(fields: [medicineId], references: [id])
+  medicine      Medicine  @relation(fields: [medicineId], references: [id], onDelete: Cascade)
 
-  @@index([medicineId])
-}
-
-model Batch {
-  id            Int               @id @default(autoincrement())
-  serial        String            @unique
-  purchaseOrderId Int?
-  mfgDate       DateTime
-  expiryDate    DateTime
-  quantity      Int
-  price         Float
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
-  purchaseOrder PurchaseOrder?    @relation(fields: [purchaseOrderId], references: [id])
-  medicineInstances MedicineInstance[]
-  medicine      Medicine?         @relation(fields: [medicineId], references: [id])
-  medicineId    Int?              
-  soldItems     SoldItems[]       
-  returnedItems ReturnedItems[]   
-
-  @@index([serial])
+  @@unique([medicineId, expiryDate])
   @@index([medicineId])
 }
 
 model StockTransaction {
-  id              Int               @id @default(autoincrement())
-  medicalStoreId  Int
+  id                Int               @id @default(autoincrement())
+  medicalStoreId    Int
   medicineInstanceId Int
-  purchaseOrderId Int?
-  quantity        Int
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  medicalStore    MedicalStore      @relation(fields: [medicalStoreId], references: [id])
-  medicineInstance MedicineInstance @relation(fields: [medicineInstanceId], references: [id])
-  purchaseOrder   PurchaseOrder?    @relation(fields: [purchaseOrderId], references: [id])
+  purchaseOrderId   Int?
+  quantity          Int
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  medicalStore      MedicalStore      @relation(fields: [medicalStoreId], references: [id], onDelete: Cascade)
+  medicineInstance  MedicineInstance  @relation(fields: [medicineInstanceId], references: [id], onDelete: Cascade)
+  purchaseOrder     PurchaseOrder?    @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
 
   @@index([medicalStoreId])
   @@index([medicineInstanceId])
+  @@index([purchaseOrderId])
 }
 
 model PurchaseOrder {
-  id            Int               @id @default(autoincrement())
+  id            Int           @id @default(autoincrement())
   medicalStoreId Int
-  userId        Int               
+  supplierId    Int?
+  userId        Int
   orderDate     DateTime
-  status        String            @default("Pending")
+  status        String        @default("Pending")
   totalCost     Float
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
-  medicalStore  MedicalStore      @relation(fields: [medicalStoreId], references: [id])
-  user          User              @relation("UserPurchaseOrders", fields: [userId], references: [id])
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  medicalStore  MedicalStore  @relation(fields: [medicalStoreId], references: [id], onDelete: Cascade)
+  supplier      Supplier?     @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  user          User          @relation("UserPurchaseOrders", fields: [userId], references: [id], onDelete: Cascade)
   batches       Batch[]
   stockTransactions StockTransaction[]
 
   @@index([medicalStoreId])
+  @@index([supplierId])
   @@index([userId])
 }
-
-
 
 model Order {
   id               Int           @id @default(autoincrement())
   userId           Int
-  customerId       Int?         
+  customerId       Int?
   customerName     String?
   customerLocation String?
   customerContact  String?
@@ -238,8 +307,8 @@ model Order {
   status           String        @default("Paid")
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
-  user             User          @relation("UserOrders", fields: [userId], references: [id])
-  customer         Customer?     @relation(fields: [customerId], references: [id])
+  user             User          @relation("UserOrders", fields: [userId], references: [id], onDelete: Cascade)
+  customer         Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
   soldItems        SoldItems[]
   returnedItems    ReturnedItems[]
 
@@ -265,6 +334,7 @@ model SoldItems {
   orderId       Int
   medicineId    Int
   batchId       Int?
+  subUnitId     Int?
   packing       String?
   quantity      Int
   retailPrice   Float
@@ -272,12 +342,15 @@ model SoldItems {
   margin        Float
   saleDate      DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-  medicine      Medicine  @relation(fields: [medicineId], references: [id])
-  order         Order     @relation(fields: [orderId], references: [id])
-  batch         Batch?    @relation(fields: [batchId], references: [id])
+  medicine      Medicine  @relation(fields: [medicineId], references: [id], onDelete: Cascade)
+  order         Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  batch         Batch?    @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  subUnit       SubUnit?  @relation(fields: [subUnitId], references: [id], onDelete: SetNull)
 
   @@index([orderId])
   @@index([medicineId])
+  @@index([batchId])
+  @@index([subUnitId])
 }
 
 model ReturnedItems {
@@ -285,31 +358,35 @@ model ReturnedItems {
   orderId       Int
   medicineId    Int
   batchId       Int?
+  subUnitId     Int?
   packing       String?
   quantity      Int
   retailPrice   Float
   discountPrice Float?
   margin        Float
-  returnType    ReturnType?
+  returnType    ReturnType
   returnedDate  DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-  medicine      Medicine  @relation(fields: [medicineId], references: [id])
-  order         Order     @relation(fields: [orderId], references: [id])
-  batch         Batch?    @relation(fields: [batchId], references: [id])
+  medicine      Medicine  @relation(fields: [medicineId], references: [id], onDelete: Cascade)
+  order         Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  batch         Batch?    @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  subUnit       SubUnit?  @relation(fields: [subUnitId], references: [id], onDelete: SetNull)
 
   @@index([orderId])
   @@index([medicineId])
+  @@index([batchId])
+  @@index([subUnitId])
 }
 
 model AuditLog {
-  id            Int       @id @default(autoincrement())
-  userId        Int
-  action        String    
-  entity        String    
-  entityId      Int       
-  description   String?   
-  createdAt     DateTime  @default(now())
-  user          User      @relation(fields: [userId], references: [id])
+  id          Int       @id @default(autoincrement())
+  userId      Int
+  action      String
+  entity      String
+  entityId    Int
+  description String?
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([entity, entityId])
@@ -338,4 +415,3 @@ enum ReturnType {
   CUSTOMER_RETURN
   COMPANY_RETURN
 }
-

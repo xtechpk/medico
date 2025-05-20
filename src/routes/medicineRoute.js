@@ -32,13 +32,8 @@ router.get('/medical-stores/:medicalStoreId/medicines/near-expiry', medicineCont
 // Get low-stock medicines
 router.get('/medical-stores/:medicalStoreId/medicines/low-stock', medicineController.getLowStockMedicines);
 
+// Get medicines near expiry by store
+router.get('/batches/near-expiry/:medicalStoreId', medicineController.getSingleNearExpiryBatchForSale);
+
 
 module.exports = router;
-
-
-
-
-
-// curl http://localhost:3000/api/medical-stores/2/medicines/near-expiry
-
-// curl http://localhost:3000/api/medical-stores/2/medicines/low-stock

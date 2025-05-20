@@ -3,6 +3,7 @@ const prisma = new PrismaClient(); // Initialize Prisma client
 
 // Create a new company
 const createCompany = async (req, res) => {
+  const { medicalStoreId } = req.params;
   const { 
     companyCode, 
     name, 
@@ -11,24 +12,35 @@ const createCompany = async (req, res) => {
     mobile, 
     distributorCode, 
     ntnNo, 
-    medicalStoreId,
-    isActive // Optional field
+    isActive,
+    medicalStoreId: bodyMedicalStoreId // Optional medicalStoreId in body
   } = req.body;
 
   try {
     // Debug log for received data
-    console.log('Request Body:', req.body);
+    console.log('Request Params:', req.params, 'Request Body:', req.body);
 
     // Validate required fields
-    if (!companyCode || !name || !address || !distributorCode || !medicalStoreId) {
+    if (!companyCode || !name || !address) {
       return res.status(400).json({
-        error: 'Company code, name, address, distributor code, and medical store ID are required.',
+        error: 'Company code, name, and address are required.',
       });
     }
 
-    // Convert medicalStoreId to a number to avoid type issues
+    // Convert medicalStoreId from params to a number
     const storeId = Number(medicalStoreId);
-    console.log('Converted medicalStoreId:', storeId);
+    if (isNaN(storeId)) {
+      return res.status(400).json({
+        error: 'Invalid medical store ID in URL. It must be a number.',
+      });
+    }
+
+    // Validate medicalStoreId from body matches params (if provided)
+    if (bodyMedicalStoreId !== undefined && Number(bodyMedicalStoreId) !== storeId) {
+      return res.status(400).json({
+        error: `Medical store ID in body (${bodyMedicalStoreId}) does not match URL parameter (${medicalStoreId}).`,
+      });
+    }
 
     // Check if the medical store exists
     const medicalStore = await prisma.medicalStore.findUnique({
@@ -54,6 +66,11 @@ const createCompany = async (req, res) => {
         medicalStoreId: storeId,
         isActive: isActive === undefined ? true : isActive, // Default to true if not provided
       },
+      include: {
+        medicalStore: true,
+        suppliers: true,
+        medicines: true, // Include medicines relation
+      },
     });
 
     // Return success response
@@ -64,7 +81,7 @@ const createCompany = async (req, res) => {
   } catch (error) {
     console.error('Error creating company:', error);
 
-    // Handle unique constraint violation (P2002)
+    // Handle unique constraint violation
     if (error.code === 'P2002' && error.meta?.target?.includes('companyCode_medicalStoreId')) {
       return res.status(400).json({
         error: `A company with the code '${companyCode}' already exists in the medical store with ID ${medicalStoreId}.`,
@@ -85,97 +102,185 @@ const createCompany = async (req, res) => {
   }
 };
 
-
-// Get all companies by medicalStoreId with counts for total, active, and inactive companies
-const getCompaniesByMedicalStoreId = async (req, res) => {
-  const { medicalStoreId } = req.params; // Extract medicalStoreId from request params
+// Get all companies for a specific medical store
+const getAllCompanies = async (req, res) => {
+  const { medicalStoreId } = req.params;
 
   try {
-    // Convert medicalStoreId to a number (ensure it's valid)
+    // Validate medicalStoreId
     const storeId = Number(medicalStoreId);
     if (isNaN(storeId)) {
       return res.status(400).json({
-        error: 'Invalid medicalStoreId. It must be a numeric value.',
+        error: 'Invalid medical store ID. It must be a number.',
       });
     }
 
-    // Fetch companies associated with the given medicalStoreId
-    const companies = await prisma.company.findMany({
-      where: {
-        medicalStoreId: storeId, // Filter by medicalStoreId
-      },
+    // Check if the medical store exists
+    const medicalStore = await prisma.medicalStore.findUnique({
+      where: { id: storeId },
     });
 
-    // Check if companies exist
-    if (companies.length === 0) {
+    if (!medicalStore) {
       return res.status(404).json({
-        error: `No companies found for medical store with ID ${storeId}.`,
+        error: `Medical store with ID ${storeId} not found.`,
       });
     }
 
-    // Calculate counts
-    const totalCount = companies.length;
-    const activeCount = companies.filter(company => company.isActive).length;
-    const inactiveCount = totalCount - activeCount;
+    // Fetch companies for the medical store
+    const companies = await prisma.company.findMany({
+      where: {
+        medicalStoreId: storeId,
+        isActive: true,
+      },
+      include: {
+        medicalStore: true,
+        suppliers: true,
+        medicines: true, // Include medicines relation
+      },
+      orderBy: { createdAt: 'desc' },
+    });
 
-    // Return the list of companies along with the counts
     res.status(200).json({
       message: 'Companies retrieved successfully!',
-      counts: {
-        total: totalCount,
-        active: activeCount,
-        inactive: inactiveCount,
-      },
       companies,
     });
   } catch (error) {
-    console.error('Error retrieving companies:', error);
-
-    // Handle unexpected errors
+    console.error('Error fetching companies:', error);
     res.status(500).json({
-      error: 'An error occurred while retrieving companies.',
+      error: 'An error occurred while fetching companies.',
     });
   }
 };
 
-
-// Update a company by ID (including isActive status, excluding medicalStoreId)
-const updateCompany = async (req, res) => {
-  const { id } = req.params; // Extract company ID from request params
-  const {
-    companyCode,
-    name,
-    address,
-    phone,
-    mobile,
-    distributorCode,
-    ntnNo,
-    isActive, // Add isActive to the fields that can be updated
-  } = req.body; // Extract fields to update from the request body
+// Get a company by ID and medical store ID
+const getCompanyById = async (req, res) => {
+  const { id, medicalStoreId } = req.params;
 
   try {
-    // Convert ID to a number and validate
-    const companyId = Number(id);
-    if (isNaN(companyId)) {
+    // Validate medicalStoreId
+    const storeId = Number(medicalStoreId);
+    if (isNaN(storeId)) {
       return res.status(400).json({
-        error: 'Invalid company ID. It must be a numeric value.',
+        error: 'Invalid medical store ID. It must be a number.',
+      });
+    }
+
+    // Check if the medical store exists
+    const medicalStore = await prisma.medicalStore.findUnique({
+      where: { id: storeId },
+    });
+
+    if (!medicalStore) {
+      return res.status(404).json({
+        error: `Medical store with ID ${storeId} not found.`,
+      });
+    }
+
+    // Fetch the company
+    const company = await prisma.company.findUnique({
+      where: { id: Number(id) },
+      include: {
+        medicalStore: true,
+        suppliers: true,
+        medicines: true, // Include medicines relation
+      },
+    });
+
+    if (!company) {
+      return res.status(404).json({
+        error: `Company with ID ${id} not found.`,
+      });
+    }
+
+    // Verify the company belongs to the specified medical store
+    if (company.medicalStoreId !== storeId) {
+      return res.status(403).json({
+        error: `Company with ID ${id} does not belong to medical store with ID ${storeId}.`,
+      });
+    }
+
+    res.status(200).json({
+      message: 'Company retrieved successfully!',
+      company,
+    });
+  } catch (error) {
+    console.error('Error fetching company:', error);
+    res.status(500).json({
+      error: `An error occurred while fetching the company with ID ${id}.`,
+    });
+  }
+};
+
+// Update a company
+const updateCompany = async (req, res) => {
+  const { id, medicalStoreId } = req.params;
+  const { 
+    companyCode, 
+    name, 
+    address, 
+    phone, 
+    mobile, 
+    distributorCode, 
+    ntnNo, 
+    isActive,
+    medicalStoreId: bodyMedicalStoreId // Optional medicalStoreId in body
+  } = req.body;
+
+  try {
+    // Validate required fields
+    if (!companyCode || !name || !address) {
+      return res.status(400).json({
+        error: 'Company code, name, and address are required.',
+      });
+    }
+
+    // Convert medicalStoreId from params to a number
+    const storeId = Number(medicalStoreId);
+    if (isNaN(storeId)) {
+      return res.status(400).json({
+        error: 'Invalid medical store ID in URL. It must be a number.',
+      });
+    }
+
+    // Validate medicalStoreId from body matches params (if provided)
+    if (bodyMedicalStoreId !== undefined && Number(bodyMedicalStoreId) !== storeId) {
+      return res.status(400).json({
+        error: `Medical store ID in body (${bodyMedicalStoreId}) does not match URL parameter (${medicalStoreId}).`,
+      });
+    }
+
+    // Check if the medical store exists
+    const medicalStore = await prisma.medicalStore.findUnique({
+      where: { id: storeId },
+    });
+
+    if (!medicalStore) {
+      return res.status(404).json({
+        error: `Medical store with ID ${storeId} not found.`,
       });
     }
 
     // Check if the company exists
-    const existingCompany = await prisma.company.findUnique({
-      where: { id: companyId },
+    const companyExists = await prisma.company.findUnique({
+      where: { id: Number(id) },
     });
 
-    if (!existingCompany) {
+    if (!companyExists) {
       return res.status(404).json({
-        error: `Company with ID ${companyId} not found.`,
+        error: `Company with ID ${id} not found.`,
       });
     }
 
-    // Update the company (including isActive, excluding medicalStoreId)
-    const updatedCompany = await prisma.company.update({
-      where: { id: companyId },
+    // Verify the company belongs to the specified medical store
+    if (companyExists.medicalStoreId !== storeId) {
+      return res.status(403).json({
+        error: `Company with ID ${id} does not belong to medical store with ID ${storeId}.`,
+      });
+    }
+
+    // Update the company
+    const company = await prisma.company.update({
+      where: { id: Number(id) },
       data: {
         companyCode,
         name,
@@ -184,30 +289,126 @@ const updateCompany = async (req, res) => {
         mobile,
         distributorCode,
         ntnNo,
-        ...(isActive !== undefined && { isActive }), // Only update isActive if it's provided
+        medicalStoreId: storeId,
+        isActive: isActive !== undefined ? isActive : companyExists.isActive,
+      },
+      include: {
+        medicalStore: true,
+        suppliers: true,
+        medicines: true, // Include medicines relation
       },
     });
 
-    // Return success response
     res.status(200).json({
       message: 'Company updated successfully!',
-      company: updatedCompany,
+      company,
     });
   } catch (error) {
     console.error('Error updating company:', error);
 
-    // Handle unique constraint violation (P2002)
-    if (error.code === 'P2002') {
+    // Handle unique constraint violation
+    if (error.code === 'P2002' && error.meta?.target?.includes('companyCode_medicalStoreId')) {
       return res.status(400).json({
-        error: `A company with the code '${companyCode}' already exists.`,
+        error: `A company with the code '${companyCode}' already exists in the medical store with ID ${medicalStoreId}.`,
       });
     }
 
-    // Handle unexpected errors
+    // Handle other Prisma errors
+    if (error.code) {
+      return res.status(500).json({
+        error: `Prisma error occurred: ${error.message}`,
+      });
+    }
+
     res.status(500).json({
-      error: 'An error occurred while updating the company.',
+      error: `An error occurred while updating the company with ID ${id}.`,
     });
   }
 };
 
-module.exports = { createCompany, getCompaniesByMedicalStoreId , updateCompany};
+// Delete a company (soft delete by setting isActive to false)
+const deleteCompany = async (req, res) => {
+  const { id, medicalStoreId } = req.params;
+
+  try {
+    // Validate medicalStoreId
+    const storeId = Number(medicalStoreId);
+    if (isNaN(storeId)) {
+      return res.status(400).json({
+        error: 'Invalid medical store ID. It must be a number.',
+      });
+    }
+
+    // Check if the medical store exists
+    const medicalStore = await prisma.medicalStore.findUnique({
+      where: { id: storeId },
+    });
+
+    if (!medicalStore) {
+      return res.status(404).json({
+        error: `Medical store with ID ${storeId} not found.`,
+      });
+    }
+
+    // Check if the company exists
+    const company = await prisma.company.findUnique({
+      where: { id: Number(id) },
+    });
+
+    if (!company) {
+      return res.status(404).json({
+        error: `Company with ID ${id} not found.`,
+      });
+    }
+
+    // Verify the company belongs to the specified medical store
+    if (company.medicalStoreId !== storeId) {
+      return res.status(403).json({
+        error: `Company with ID ${id} does not belong to medical store with ID ${storeId}.`,
+      });
+    }
+
+    // Check if the company has associated suppliers or medicines
+    const suppliers = await prisma.supplier.count({
+      where: { companyId: Number(id), isActive: true },
+    });
+    const medicines = await prisma.medicine.count({
+      where: { companyId: Number(id), isActive: true },
+    });
+
+    if (suppliers > 0 || medicines > 0) {
+      return res.status(400).json({
+        error: 'Cannot delete company with associated active suppliers or medicines.',
+      });
+    }
+
+    // Soft delete by setting isActive to false
+    const updatedCompany = await prisma.company.update({
+      where: { id: Number(id) },
+      data: { isActive: false },
+      include: {
+        medicalStore: true,
+        suppliers: true,
+        medicines: true,
+      },
+    });
+
+    res.status(200).json({
+      message: `Company with ID ${id} has been deactivated.`,
+      company: updatedCompany,
+    });
+  } catch (error) {
+    console.error('Error deactivating company:', error);
+    res.status(500).json({
+      error: `An error occurred while deactivating the company with ID ${id}.`,
+    });
+  }
+};
+
+module.exports = {
+  createCompany,
+  getAllCompanies,
+  getCompanyById,
+  updateCompany,
+  deleteCompany,
+};
